@@ -98,14 +98,12 @@ This specific style hides the Message Actions buttons from older messages, which
 
 ## Changelog
 
+#### v1.1.4
+Fixed Historical Context not being counted properly toward total prompt size.<br>
+Improved error messages when summary context size is exceeded.
+
 #### v1.1.3
 Adjusted css style for Original Messages.
-
-#### v1.1.2
-Summary Messages can now have Reasoning block if the model produced it (Requires a SillyTavern update).<br>
-Summary Messages now show the model, date and token count.<br>
-Summary Messages now recalculate message token count when manually edited.<br>
-Better error messages if Summary generation fails (Requires a SillyTavern update).
 
 ### Previous Changes
 See `changelog.md`

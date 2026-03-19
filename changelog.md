@@ -1,5 +1,9 @@
 # Full Changelog
 
+#### v1.1.4
+Fixed Historical Context not being counted properly toward total prompt size.<br>
+Improved error messages when summary context size is exceeded.
+
 #### v1.1.3
 Adjusted css style for original messages.
 
