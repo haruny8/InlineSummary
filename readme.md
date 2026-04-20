@@ -10,10 +10,10 @@ The original messages are stored away and hidden, but can be restored at any tim
 
 ## Usage
 #### Making a new Summary
-Select a **Start** ( <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/7.x/svgs/solid/arrow-right-from-bracket.svg" width="12" height="12"> ) and an **End** ( <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/7.x/svgs/solid/arrow-right-to-bracket.svg" width="12" height="12"> ) message using the two Message Action buttons.<br>
+Select a **Start** and an **End** message using the two Message Action buttons.<br>
 ![Message buttons](images/usage1.png)<br>
 ![Message buttons - start selected](images/usage2.png)<br>
-Then the options for **AI Summary** ( <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/7.x/svgs/solid/robot.svg" width="12" height="12"> ), **Manual Summary** ( <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/7.x/svgs/solid/user-tag.svg" width="12" height="12"> ), and **Clear Range** ( <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/7.x/svgs/solid/broom.svg" width="12" height="12"> ) will appear.<br>
+Then the options for **AI Summary** , **Manual Summary**, and **Clear Range** will appear.<br>
 ![Message buttons - start and end selected](images/usage3.png)<br>
 Click the **AI Summary** button and wait for the AI to finish generating.<br>
 Alternatively click the **Manual Summary** button, then edit the inserted message and write a manual summary.<br>
@@ -21,8 +21,8 @@ Alternatively click the **Manual Summary** button, then edit the inserted messag
 #### Existing Summary
 Summary messages will contain an expandable header which contains the original messages. Click anywhere on the header (except the buttons) to expand it.<br>
 ![Summary message example](images/usage4.png)<br>
-The **Restore Original and Delete Summary** ( <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/7.x/svgs/solid/file-arrow-up.svg" width="12" height="12"> ) button will detele the summary and restore the original messages.<br>
-The **Re-Summarise (AI)** ( <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/7.x/svgs/solid/robot.svg" width="12" height="12"> ) will regenerate a new summary using the stored original messages.
+The **Restore Original and Delete Summary** button will detele the summary and restore the original messages.<br>
+The **Re-Summarise (AI)** will regenerate a new summary using the stored original messages.
 
 #### Slash Command
 `/ils-summarise manual=[true|false] x y` is avalable to generate a summary.<br>
