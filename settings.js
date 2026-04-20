@@ -18,6 +18,8 @@ const kDefaultSettings = Object.freeze({
 	useDifferentApiPreset: false,
 	apiPresets: {},
 	autoScroll: true,
+	regexPreGenerate: false,
+	regexPostGenerate: false,
 	summaryNameMode: "custom",
 	summaryName: "Summary",
 });
@@ -35,7 +37,8 @@ import
 	kDefaultsFile,
 	GetILSInstance,
 	ShowError,
-	ShowWarning
+	ShowWarning,
+	Debounce
 } from './common.js';
 
 export let gSettings = {};
@@ -187,6 +190,12 @@ export function OnSettingChanged(event)
 			break;
 		case "ils_setting_auto_scroll":
 			gSettings.autoScroll = event.target.checked;
+			break;
+		case "ils_setting_enable_regex_pre_generate":
+			gSettings.regexPreGenerate = event.target.checked;
+			break;
+		case "ils_setting_enable_regex_post_generate":
+			gSettings.regexPostGenerate = event.target.checked;
 			break;
 		case "ils_setting_smr_name_mode_user":
 		case "ils_setting_smr_name_mode_char":
@@ -345,6 +354,11 @@ export async function OnSettingSpResetToDefault()
 	UpdateSettingsUI();
 }
 
+async function OnSettingSpImportClick()
+{
+	$('#ils_setting_sp_import_file').trigger('click');
+}
+
 export async function UpdateSettingsUI()
 {
 	const stContext = SillyTavern.getContext();
@@ -361,6 +375,8 @@ export async function UpdateSettingsUI()
 	$("#ils_setting_token_limit").val(gSettings.tokenLimit);
 	$("#ils_setting_smr_name_custom_val").val(gSettings.summaryName);
 	$("#ils_setting_auto_scroll").prop("checked", gSettings.autoScroll);
+	$("#ils_setting_enable_regex_pre_generate").prop("checked", gSettings.regexPreGenerate);
+	$("#ils_setting_enable_regex_post_generate").prop("checked", gSettings.regexPostGenerate);
 	$("#ils_setting_use_different_profile").prop("checked", gSettings.useDifferentProfile);
 	$("#ils_setting_use_specified_api_preset").prop("checked", gSettings.useDifferentApiPreset);
 
@@ -383,6 +399,19 @@ export async function UpdateSettingsUI()
 			spDropdown.append($('<option>', { value: custompreset, text: custompreset }));
 		}
 		spDropdown.val(gSpName);
+	}
+
+	// Check for Regex extension
+	const regexRes = await stContext.executeSlashCommandsWithOptions("/extension-state regex");
+	if (regexRes.pipe != "true")
+	{
+		$("#ils_setting_enable_regex_pre_generate").prop("disabled", true);
+		$("#ils_setting_enable_regex_post_generate").prop("disabled", true);
+		ilsInstance.regexEnabled = false;
+	}
+	else
+	{
+		ilsInstance.regexEnabled = true;
 	}
 
 	// Do Connection Profile stuff last so we can early return on errors
@@ -515,4 +544,38 @@ export async function UpdateSettingsUI()
 	{
 		ShowError("Failed to populate Preset dropdown.", e);
 	}
+}
+
+export function SetupOnSettingChangeEvents()
+{
+	// Setup setting change handlers
+	$("#ils_setting_sp_combo").on("input", OnSettingChanged);
+	$("#ils_setting_hist_ctx_depth").on("input", OnSettingChanged);
+	$("#ils_setting_hist_ctx_start").on("input", Debounce(OnSettingChanged, 500));
+	$("#ils_setting_hist_ctx_end").on("input", Debounce(OnSettingChanged, 500));
+	$("#ils_setting_summ_cont_start").on("input", Debounce(OnSettingChanged, 500));
+	$("#ils_setting_summ_cont_end").on("input", Debounce(OnSettingChanged, 500));
+	$("#ils_setting_prompt_main").on("input", Debounce(OnSettingChanged, 500));
+	$("#ils_setting_prompt_mid").on("input", Debounce(OnSettingChanged, 500));
+	$("#ils_setting_prompt_end").on("input", Debounce(OnSettingChanged, 500));
+	$("#ils_setting_smr_name_custom_val").on("input", Debounce(OnSettingChanged, 500));
+	$("#ils_setting_token_limit").on("input", OnSettingChanged);
+	$("#ils_setting_use_different_profile").on("change", OnSettingChanged);
+	$("#ils_setting_connection_profile").on("input", OnSettingChanged);
+	$("#ils_setting_use_specified_api_preset").on("change", OnSettingChanged);
+	$("#ils_setting_chat_completion_preset").on("input", OnSettingChanged);
+	$("#ils_setting_smr_name_mode_user").on("change", OnSettingChanged);
+	$("#ils_setting_smr_name_mode_char").on("change", OnSettingChanged);
+	$("#ils_setting_smr_name_mode_custom").on("change", OnSettingChanged);
+	$("#ils_setting_auto_scroll").on("change", OnSettingChanged);
+	$("#ils_setting_enable_regex_pre_generate").on("change", OnSettingChanged);
+	$("#ils_setting_enable_regex_post_generate").on("change", OnSettingChanged);
+
+	$("#ils_setting_sp_new").on("click", OnSettingSpNew);
+	$("#ils_setting_sp_delete").on("click", OnSettingSpDelete);
+	$("#ils_setting_sp_import").on("click", OnSettingSpImportClick);
+	$("#ils_setting_sp_export").on("click", OnSettingSpExport);
+	$("#ils_setting_sp_reset_default").on("click", OnSettingSpResetToDefault);
+
+	$("#ils_setting_sp_import_file").on("change", OnSettingSpImportFile);
 }

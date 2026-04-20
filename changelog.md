@@ -1,5 +1,8 @@
 # Full Changelog
 
+#### v1.1.5
+Added Regex support to summary generation process.
+
 #### v1.1.4
 Fixed Historical Context not being counted properly toward total prompt size.<br>
 Improved error messages when summary context size is exceeded.

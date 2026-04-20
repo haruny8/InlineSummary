@@ -3,9 +3,9 @@
 // =========================
 // Constants
 // =========================
-const kExtensionName = "InlineSummary";
-const kExtensionFolderPath = `scripts/extensions/third-party/${kExtensionName}`;
-const kSettingsFile = `${kExtensionFolderPath}/settings.html`;
+//const kExtensionName = "InlineSummary";
+//const kExtensionFolderPath = `scripts/extensions/third-party/${kExtensionName}`;
+//const kSettingsFile = `${kExtensionFolderPath}/settings.html`;
 //const kDefaultsFile = `${kExtensionFolderPath}/defaults.json`;
 const kExtraDataKey = "ILS_Data";
 const kOriginalMessagesKey = "OriginalMessages";
@@ -34,17 +34,23 @@ const kDepthColours = [
 // Includes/API/Globals
 // =========================
 
-import { amount_gen as textMaxTokens, getGeneratingApi, getGeneratingModel, this_chid, system_avatar, default_avatar } from "../../../../script.js";
-import { download, getSanitizedFilename, timestampToMoment } from '../../../../scripts/utils.js';
-//import { POPUP_RESULT, Popup } from '../../../../scripts/popup.js';
+import { getGeneratingApi, getGeneratingModel, this_chid, system_avatar, default_avatar } from "../../../../script.js";
+import { timestampToMoment } from '../../../../scripts/utils.js';
 import { extractReasoningFromData } from '../../../../scripts/reasoning.js';
 import { getMessageTimeStamp } from '../../../../scripts/RossAscends-mods.js';
 import { power_user } from '../../../../scripts/power-user.js';
+import { getRegexedString, regex_placement } from "../../../extensions/regex/engine.js";
 
 import
 {
+	kSettingsFile,
 	ShowError,
-	//ShowWarning
+	//ShowWarning,
+	Sleep,
+	SafeJsonStringify,
+	GetILSInstance,
+	IsOperationLockEngaged,
+	GetMessageByIndex
 } from './common.js';
 
 import
@@ -54,34 +60,19 @@ import
 	LoadSettings,
 	UpdateSettingsUI,
 	//SwapProfile,
-	OnSettingChanged,
+	/*OnSettingChanged,
 	OnSettingSpNew,
 	OnSettingSpDelete,
 	OnSettingSpImportFile,
 	OnSettingSpExport,
-	OnSettingSpResetToDefault
+	OnSettingSpResetToDefault,*/
+	SetupOnSettingChangeEvents
 } from './settings.js'
 
-const kILSGlobalKey = Symbol.for("InlineSummary.ILS");
-
-function GetILSInstance()
+import
 {
-	const g = globalThis;
-
-	if (!g[kILSGlobalKey])
-		g[kILSGlobalKey] = {};
-
-	return g[kILSGlobalKey];
-}
-
-function IsOperationLockEngaged()
-{
-	const ilsInstance = GetILSInstance()
-	if (ilsInstance.operationLock)
-		return true;
-
-	return false;
-}
+	MakeSummaryPrompt
+} from './generate.js'
 
 // =========================
 // Helpers
@@ -97,16 +88,6 @@ function GetDepthColourWithAlpha(depth, alpha)
 	return GetDepthColour(depth) + alphaHex;
 }
 
-function GetMessageByIndex(msgIndex, stContext)
-{
-	return stContext.chat[msgIndex];
-}
-
-function Sleep(ms)
-{
-	return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 function MakeSpinner()
 {
 	const spinner = document.createElement("div");
@@ -114,18 +95,6 @@ function MakeSpinner()
 	spinner.innerHTML = '<i class="fa-solid fa-spinner"></i>';
 
 	return spinner;
-}
-
-function SafeJsonStringify(obj)
-{
-	try
-	{
-		return JSON.stringify(obj);
-	}
-	catch
-	{
-		return String(obj);
-	}
 }
 
 // =========================
@@ -278,33 +247,21 @@ async function SwapBackFromSummaryProfile(stContext, useDifferentProfile, prevPr
 	}
 }
 
-function GetContextSize(stContext)
-{
-	const apiMode = stContext.mainApi?.toLowerCase();
-
-	switch (apiMode)
-	{
-		case "textgenerationwebui":
-		case "novel":
-		case "koboldhorde":
-		case "kobold":
-			return { ctxOk: true, ctxSize: stContext.maxContext, resSize: textMaxTokens };
-
-		case "openai":
-			return { ctxOk: true, ctxSize: stContext.chatCompletionSettings.openai_max_context, resSize: stContext.chatCompletionSettings.openai_max_tokens };
-
-		default:
-			ShowError("Unsupported Mode: '" + stContext.mainApi + "'.");
-			return { ctxOk: false, ctxSize: 0, resSize: 0 };
-	}
-}
-
 async function PopulateSummaryMessage(stContext, summaryMsg, response, newApi)
 {
+	const ilsInstance = GetILSInstance();
+
 	if (newApi)
 	{
-		const msg = stContext.extractMessageFromData(response);
-		const reasoning = extractReasoningFromData(response);
+		let msg = stContext.extractMessageFromData(response);
+		let reasoning = extractReasoningFromData(response);
+
+		if (ilsInstance.regexEnabled && gSettings.regexPostGenerate)
+		{
+			msg = getRegexedString(msg, regex_placement.AI_OUTPUT, { isPrompt: false, isEdit: true, depth: 0 });
+			reasoning = getRegexedString(reasoning, regex_placement.REASONING, { isPrompt: false, isEdit: true, depth: 0 });
+		}
+
 		summaryMsg.mes = msg;
 		summaryMsg.extra.reasoning = reasoning;
 	}
@@ -345,7 +302,7 @@ async function GenerateSummaryAI()
 
 	// Prepare original messages and prompt
 	const originalMessages = stContext.chat.slice(selection.start, selection.end + 1);
-	const { promptOk, promptText, promptError } = await MakeSummaryPrompt(selection.start, originalMessages, stContext);
+	const { promptOk, promptText, promptError } = await MakeSummaryPrompt(selection.start, stContext.chat.length - (selection.end + 1), originalMessages, stContext, gSettings);
 
 	if (!promptOk)
 	{
@@ -686,7 +643,7 @@ const kHeaderButtons = [
 			}
 
 			const originalMessages = summaryMsg.extra[kExtraDataKey][kOriginalMessagesKey];
-			const { promptOk, promptText, promptError } = await MakeSummaryPrompt(msgIndex, originalMessages, stContext);
+			const { promptOk, promptText, promptError } = await MakeSummaryPrompt(msgIndex, stContext.chat.length - (msgIndex + 1), originalMessages, stContext, gSettings);
 
 			if (!promptOk)
 			{
@@ -829,133 +786,6 @@ function RefreshMessageElements(messageDiv, msgIndex)
 	{
 		existingOrigMsgDiv.remove();
 	}
-}
-
-// =========================
-// Summary Functions
-// =========================
-
-async function MakeSummaryPrompt(msgIndex, originalMessages, stContext)
-{
-	let { ctxOk, ctxSize, resSize } = GetContextSize(stContext);
-
-	if (!ctxOk)
-		return { promptOk: false, promptText: "", promptError: "Could not get context size." };
-
-	if (gSettings.tokenLimit > 0)
-		resSize = gSettings.tokenLimit;
-
-	const maxPromptSize = ctxSize - resSize;
-	let remainingSize = maxPromptSize;
-
-	// Generate Summary Prompt
-
-	// Add Main Prompt
-	const startPrompt = gSettings.startPrompt;
-	const startPromptTokenCount = await stContext.getTokenCountAsync(startPrompt);
-	remainingSize -= startPromptTokenCount;
-
-	// Setup Mid-Prompt
-	const midPrompt = (gSettings.midPrompt !== "") ? "\n" + gSettings.midPrompt : "";
-	const midPromptToekenCount = await stContext.getTokenCountAsync(midPrompt);
-	remainingSize -= midPromptToekenCount;
-
-	// Setup End-Prompt
-	const endPrompt = (gSettings.endPrompt !== "") ? "\n" + gSettings.endPrompt : "";
-	const endPromptTokenCount = await stContext.getTokenCountAsync(endPrompt);
-	remainingSize -= endPromptTokenCount
-
-	const instructionTokenTotal = startPromptTokenCount + midPromptToekenCount + endPromptTokenCount;
-
-	// Check if Prompt fits
-	if (remainingSize < 0)
-		return { promptOk: false, promptText: "", promptError: "Prompt instructions too big for context:\nReserved for reply: " + resSize
-			+ ";\nStart Prompt: " + startPromptTokenCount
-			+ ";\nMid Prompt: " + midPromptToekenCount
-			+ ";\nEnd Prompt: " + endPromptTokenCount
-			+ ";\nTotal: " + (resSize + instructionTokenTotal) + " of " + ctxSize + " context." };
-
-	// - Content to Summarise
-	let messagesToSummarise = "";
-	for (const msg of originalMessages)
-	{
-		if (!msg.is_system)
-		{
-			const msgText = msg.mes.trim();
-			if (msgText.length > 0)
-				messagesToSummarise += "\n" + msgText;
-		}
-	}
-	if (messagesToSummarise.length == 0)
-		return { promptOk: false, promptText: "", promptError: "No messages to summarise. Are all messages in the selected range hidden or blank?" };
-
-	messagesToSummarise = "\n" + gSettings.summariseStartMarker + messagesToSummarise + "\n" + gSettings.summariseEndMarker;
-	const messagesToSummariseTokenCount = await stContext.getTokenCountAsync(messagesToSummarise);
-	remainingSize -= messagesToSummariseTokenCount;
-
-	if (remainingSize < 0)
-		return { promptOk: false, promptText: "", promptError: "Messages to summarise too big for context:\nReserved for reply: " + resSize
-			+ ";\nStart Prompt: " + startPromptTokenCount
-			+ ";\nMid Prompt: " + midPromptToekenCount
-			+ ";\nEnd Prompt: " + endPromptTokenCount
-			+ ";\nMessages to Summarise: " + messagesToSummariseTokenCount
-			+ ";\nTotal: " + (resSize + instructionTokenTotal + messagesToSummariseTokenCount) + " of " + ctxSize + " context." };
-
-	// Historic Context
-	let historicContex = "";
-	let histContextStart = 0;
-	if (gSettings.historicalContexDepth >= 0)
-	{
-		histContextStart = msgIndex - gSettings.historicalContexDepth;
-		if (histContextStart < 0)
-			histContextStart = 0;
-	}
-
-	const histCtxLabels = "\n" + gSettings.historicalContextStartMarker + "\n" + gSettings.historicalContextEndMarker;
-
-	let histContextTokenCount = 0;
-	for (let i = msgIndex - 1; i >= histContextStart; --i)
-	{
-		const msg = GetMessageByIndex(i, stContext);
-		if (!msg.is_system)
-		{
-			const msgText = msg.mes.trim();
-			if (msgText.length > 0)
-			{
-				const tokenCost = await stContext.getTokenCountAsync(histCtxLabels + msgText);
-				if ((remainingSize - tokenCost) > 0)
-				{
-					histContextTokenCount += tokenCost;
-					remainingSize -= tokenCost;
-					historicContex = msgText + historicContex;
-				}
-				// Context too full
-				else
-				{
-					break;
-				}
-			}
-		}
-	}
-
-	// Append Historic Context
-	const summaryPrompt = startPrompt
-		+ "\n" + gSettings.historicalContextStartMarker + historicContex + "\n" + gSettings.historicalContextEndMarker
-		+ midPrompt
-		+ messagesToSummarise
-		+ endPrompt;
-
-	const finalSize = await stContext.getTokenCountAsync(summaryPrompt);
-	if (finalSize > maxPromptSize)
-		return { promptOk: false, promptText: "", promptError: "Final summary prompt exceeded context:\nReserved for reply: " + resSize
-			+ ";\nStart Prompt: " + startPromptTokenCount
-			+ ";\nMid Prompt: " + midPromptToekenCount
-			+ ";\nEnd Prompt: " + endPromptTokenCount
-			+ ";\nMessages to Summarise: " + messagesToSummariseTokenCount
-			+ ";\nHistorical Context: " + histContextTokenCount
-			+ ";\nTotal: " + (resSize + instructionTokenTotal + messagesToSummariseTokenCount + histContextTokenCount) + " of " + ctxSize + " context." };
-
-	return { promptOk: true, promptText: summaryPrompt, promptError: "" };
 }
 
 // =========================
@@ -1338,25 +1168,6 @@ async function SummariseCommand(namedArgs, unnamedArgs)
 }
 
 // =========================
-// Settings Handling
-// =========================
-
-function Debounce(fn, delay)
-{
-	let timeout;
-	return function (...args)
-	{
-		clearTimeout(timeout);
-		timeout = setTimeout(() => fn.apply(this, args), delay);
-	};
-}
-
-async function OnSettingSpImportClick()
-{
-	$('#ils_setting_sp_import_file').trigger('click');
-}
-
-// =========================
 // Initialise
 // =========================
 jQuery(async () =>
@@ -1379,34 +1190,7 @@ jQuery(async () =>
 	// Fill In setting values
 	await UpdateSettingsUI();
 
-	// Setup setting change handlers
-	$("#ils_setting_sp_combo").on("input", OnSettingChanged);
-	$("#ils_setting_hist_ctx_depth").on("input", OnSettingChanged);
-	$("#ils_setting_hist_ctx_start").on("input", Debounce(OnSettingChanged, 500));
-	$("#ils_setting_hist_ctx_end").on("input", Debounce(OnSettingChanged, 500));
-	$("#ils_setting_summ_cont_start").on("input", Debounce(OnSettingChanged, 500));
-	$("#ils_setting_summ_cont_end").on("input", Debounce(OnSettingChanged, 500));
-	$("#ils_setting_prompt_main").on("input", Debounce(OnSettingChanged, 500));
-	$("#ils_setting_prompt_mid").on("input", Debounce(OnSettingChanged, 500));
-	$("#ils_setting_prompt_end").on("input", Debounce(OnSettingChanged, 500));
-	$("#ils_setting_smr_name_custom_val").on("input", Debounce(OnSettingChanged, 500));
-	$("#ils_setting_token_limit").on("input", OnSettingChanged);
-	$("#ils_setting_use_different_profile").on("change", OnSettingChanged);
-	$("#ils_setting_connection_profile").on("input", OnSettingChanged);
-	$("#ils_setting_use_specified_api_preset").on("change", OnSettingChanged);
-	$("#ils_setting_chat_completion_preset").on("input", OnSettingChanged);
-	$("#ils_setting_smr_name_mode_user").on("change", OnSettingChanged);
-	$("#ils_setting_smr_name_mode_char").on("change", OnSettingChanged);
-	$("#ils_setting_smr_name_mode_custom").on("change", OnSettingChanged);
-	$("#ils_setting_auto_scroll").on("change", OnSettingChanged);
-
-	$("#ils_setting_sp_new").on("click", OnSettingSpNew);
-	$("#ils_setting_sp_delete").on("click", OnSettingSpDelete);
-	$("#ils_setting_sp_import").on("click", OnSettingSpImportClick);
-	$("#ils_setting_sp_export").on("click", OnSettingSpExport);
-	$("#ils_setting_sp_reset_default").on("click", OnSettingSpResetToDefault);
-
-	$("#ils_setting_sp_import_file").on("change", OnSettingSpImportFile);
+	SetupOnSettingChangeEvents();
 
 	// Message Action Buttons
 	const templateContainer = document.querySelector("#message_template .mes_buttons .extraMesButtons");

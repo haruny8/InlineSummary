@@ -5,22 +5,22 @@ The code for this extension was AI-generated, then manually edited and refactore
 I'm a C++ programmer, and this is my first time touching JavaScript, hence the vibecoding.<br>
 
 ## What does it do?
-This is a simple Summary/Memory extension. It allows you to select a range of messages in chat and summarise them using an LLM or manually. It then replaces the selected range with a summary message.<br>
+This is a simple Summary/Memory extension. It allows you to select a range of messages in chat and summarise them using an LLM or manually. It then replaces the selected range of chat messages with a single summary chat message, which acts as a typical chat message, therefore giving an 'Inline Summary'.<br>
 The original messages are stored away and hidden, but can be restored at any time.<br>
 
 ## Usage
 #### Making a new Summary
 Select a **Start** ( <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/7.x/svgs/solid/arrow-right-from-bracket.svg" width="12" height="12"> ) and an **End** ( <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/7.x/svgs/solid/arrow-right-to-bracket.svg" width="12" height="12"> ) message using the two Message Action buttons.<br>
-![Alt text](images/usage1.png)<br>
-![Alt text](images/usage2.png)<br>
+![Message buttons](images/usage1.png)<br>
+![Message buttons - start selected](images/usage2.png)<br>
 Then the options for **AI Summary** ( <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/7.x/svgs/solid/robot.svg" width="12" height="12"> ), **Manual Summary** ( <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/7.x/svgs/solid/user-tag.svg" width="12" height="12"> ), and **Clear Range** ( <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/7.x/svgs/solid/broom.svg" width="12" height="12"> ) will appear.<br>
-![Alt text](images/usage3.png)<br>
+![Message buttons - start and end selected](images/usage3.png)<br>
 Click the **AI Summary** button and wait for the AI to finish generating.<br>
 Alternatively click the **Manual Summary** button, then edit the inserted message and write a manual summary.<br>
 
 #### Existing Summary
 Summary messages will contain an expandable header which contains the original messages. Click anywhere on the header (except the buttons) to expand it.<br>
-![Alt text](images/usage4.png)<br>
+![Summary message example](images/usage4.png)<br>
 The **Restore Original and Delete Summary** ( <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/7.x/svgs/solid/file-arrow-up.svg" width="12" height="12"> ) button will detele the summary and restore the original messages.<br>
 The **Re-Summarise (AI)** ( <img src="https://raw.githubusercontent.com/FortAwesome/Font-Awesome/7.x/svgs/solid/robot.svg" width="12" height="12"> ) will regenerate a new summary using the stored original messages.
 
@@ -59,6 +59,8 @@ Settings in the Extension settings menu:
 | Use specified Connection Profile | Use the connection profile selected in the dropdown for generating summaries |
 | Use specified API Preset | Use the API Preset selected in the dropdown for generating summaries |
 | Auto Scroll to summarised message | Whether or not automatically scroll chat to the summarised message, summary generation causes that to refresh, and SillyTavern's default behaviour is to scroll to tbe bottom |
+| Enable Regex when summarising messages | Run Regex when on the prompt generation summary |
+| Enable Regex on final summary | Run Regex on the summary after it was generated |
 | Summary message sender name | Summary messages can have custom sender name, it can either be: User, Character or Custom. If your preset includes name prefixes, using a custom name might hint LLM that specific message is a summary |
 
 ## FAQ
@@ -98,12 +100,8 @@ This specific style hides the Message Actions buttons from older messages, which
 
 ## Changelog
 
-#### v1.1.4
-Fixed Historical Context not being counted properly toward total prompt size.<br>
-Improved error messages when summary context size is exceeded.
-
-#### v1.1.3
-Adjusted css style for Original Messages.
+#### v1.1.5
+Added Regex support to summary generation process.
 
 ### Previous Changes
 See `changelog.md`
