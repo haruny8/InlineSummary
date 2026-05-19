@@ -1,5 +1,8 @@
 # Full Changelog
 
+#### v1.1.7
+Fixed v1.1.6 changes not workin with strict/semi-strict modes
+
 #### v1.1.6
 Streaming support for OpenAI API. It uses the setting from the preset and will allow larger reply sizes for certain LLM providers.
 

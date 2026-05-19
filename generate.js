@@ -215,7 +215,7 @@ export function StartGenerate(stContext, promptText, responseTokenLimit = 0)
 		}
 
 		// Type 'normal' because... no idea, I couldn't find documentation and 'quiet' disables streaming.
-		queryFuture = sendOpenAIRequest("normal", [{ content: promptText }], null, {});
+		queryFuture = sendOpenAIRequest("normal", [{ content: promptText, role: "system" }], null, {});
 
 		// TODO suport other APIs too:
 		/*
@@ -252,10 +252,11 @@ export async function FinishGenerate(stContext, genStart)
 
 	let responseText = "";
 	let reasoningText = null;
+	let response = null;
 
 	try
 	{
-		let response = await genStart.generateQuery;
+		response = await genStart.generateQuery;
 		if (typeof response === 'function') // Streaming Request
 		{
 			let latestData = {};
