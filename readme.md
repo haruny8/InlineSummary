@@ -100,6 +100,9 @@ This specific style hides the Message Actions buttons from older messages, which
 
 ## Changelog
 
+#### v1.1.6
+Streaming support for OpenAI API. It uses the setting from the preset and will allow larger reply sizes for certain LLM providers.
+
 #### v1.1.5
 Added Regex support to summary generation process.
 

@@ -15,7 +15,26 @@ import
 	GetILSInstance,
 	GetContextSize,
 	GetMessageByIndex,
+	SafeJsonStringify,
 } from './common.js';
+
+import
+{
+	setOpenAIMessageExamples,
+	setOpenAIMessages,
+	setupChatCompletionPromptManager,
+	prepareOpenAIMessages,
+	sendOpenAIRequest,
+	loadOpenAISettings,
+	oai_settings,
+	openai_messages_count,
+	chat_completion_sources,
+	getChatCompletionModel,
+	proxies,
+	loadProxyPresets,
+	selected_proxy,
+	initOpenAI,
+} from '../../../../scripts/openai.js';
 
 // =========================
 // Summary Generation Main
@@ -176,4 +195,97 @@ export async function MakeSummaryPrompt(msgIndex, numMsgAfterSummary, originalMe
 		};
 
 	return { promptOk: true, promptText: summaryPrompt, promptError: "" };
+}
+
+export function StartGenerate(stContext, promptText, responseTokenLimit = 0)
+{
+	const ilsInstance = GetILSInstance();
+	let queryFuture = null;
+	let isOk = true;
+	let errText = "";
+	let oldMaxTokens = 0;
+
+	if (stContext.mainApi == "openai" && stContext.chatCompletionSettings.stream_openai)
+	{
+		// Save and overwrite token limit
+		if (responseTokenLimit > 0)
+		{
+			oldMaxTokens = stContext.chatCompletionSettings.openai_max_tokens;
+			stContext.chatCompletionSettings.openai_max_tokens = responseTokenLimit;
+		}
+
+		// Type 'normal' because... no idea, I couldn't find documentation and 'quiet' disables streaming.
+		queryFuture = sendOpenAIRequest("normal", [{ content: promptText }], null, {});
+
+		// TODO suport other APIs too:
+		/*
+		switch (main_api) {
+			case 'openai':
+				return await sendOpenAIRequest(type, data.prompt, streamingProcessor.abortController.signal, options);
+			case 'textgenerationwebui':
+				return await generateTextGenWithStreaming(data, streamingProcessor.abortController.signal);
+			case 'novel':
+				return await generateNovelWithStreaming(data, streamingProcessor.abortController.signal);
+			case 'kobold':
+				return await generateKoboldWithStreaming(data, streamingProcessor.abortController.signal);
+			default:
+				throw new Error('Streaming is enabled, but the current API does not support streaming.');
+		}
+		*/
+	}
+	else
+	{
+		let promptParams = { prompt: promptText };
+		if (responseTokenLimit > 0)
+			promptParams.responseLength = responseTokenLimit;
+
+		const useNewGenerate = (typeof stContext.generateRawData === "function");
+		queryFuture = useNewGenerate ? stContext.generateRawData(promptParams) : stContext.generateRaw(promptParams);
+	}
+
+	return { generateQuery: queryFuture, isOk: isOk, errorText: errText, maxResponseTokens: oldMaxTokens };
+}
+
+export async function FinishGenerate(stContext, genStart)
+{
+	const useNewGenerate = (typeof stContext.generateRawData === "function");
+
+	let responseText = "";
+	let reasoningText = null;
+
+	try
+	{
+		let response = await genStart.generateQuery;
+		if (typeof response === 'function') // Streaming Request
+		{
+			let latestData = {};
+			// Copied from another ST script, no idea how this actually is suppoed to work, but just updating till the loop exits seems to work.
+			for await (const chunk of response())
+			{
+				latestData = chunk;
+			}
+			responseText = latestData.text;
+			reasoningText = latestData?.state?.reasoning ?? null;
+		}
+		else
+		{
+			responseText = useNewGenerate ? stContext.extractMessageFromData(response) : response;
+			reasoningText = useNewGenerate ? extractReasoningFromData(response) : null;
+		}
+	}
+	catch (e)
+	{
+		console.error("[ILS] Failed to get response from LLM");
+		responseText = "[Failed to get a response]\nThis can happen if Token limit is too low and reasoning uses up all of it.\nCheck console output for full error message.\nException:\n" + e;
+		if (useNewGenerate)
+			responseText += "\nRaw Response:\n" + SafeJsonStringify(response);
+	}
+
+	// Restore token limit
+	if (stContext.mainApi == "openai" && genStart.maxResponseTokens > 0)
+	{
+		stContext.chatCompletionSettings.openai_max_tokens = genStart.maxResponseTokens;
+	}
+
+	return { mainMsg: responseText, reasoning: reasoningText };
 }

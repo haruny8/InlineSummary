@@ -3,10 +3,6 @@
 // =========================
 // Constants
 // =========================
-//const kExtensionName = "InlineSummary";
-//const kExtensionFolderPath = `scripts/extensions/third-party/${kExtensionName}`;
-//const kSettingsFile = `${kExtensionFolderPath}/settings.html`;
-//const kDefaultsFile = `${kExtensionFolderPath}/defaults.json`;
 const kExtraDataKey = "ILS_Data";
 const kOriginalMessagesKey = "OriginalMessages";
 const kMessageEstimatedTokenCountKey = "EstimatedTokens";
@@ -56,22 +52,16 @@ import
 import
 {
 	gSettings,
-	//gSpName,
 	LoadSettings,
 	UpdateSettingsUI,
-	//SwapProfile,
-	/*OnSettingChanged,
-	OnSettingSpNew,
-	OnSettingSpDelete,
-	OnSettingSpImportFile,
-	OnSettingSpExport,
-	OnSettingSpResetToDefault,*/
 	SetupOnSettingChangeEvents
 } from './settings.js'
 
 import
 {
-	MakeSummaryPrompt
+	MakeSummaryPrompt,
+	StartGenerate,
+	FinishGenerate,
 } from './generate.js'
 
 // =========================
@@ -247,28 +237,16 @@ async function SwapBackFromSummaryProfile(stContext, useDifferentProfile, prevPr
 	}
 }
 
-async function PopulateSummaryMessage(stContext, summaryMsg, response, newApi)
+async function PopulateSummaryMessage(stContext, summaryMsg, msgText, msgReasoning)
 {
 	const ilsInstance = GetILSInstance();
+	const runRegex = (ilsInstance.regexEnabled && gSettings.regexPostGenerate);
 
-	if (newApi)
-	{
-		let msg = stContext.extractMessageFromData(response);
-		let reasoning = extractReasoningFromData(response);
+	if (msgText)
+		summaryMsg.mes = runRegex ? getRegexedString(msgText, regex_placement.AI_OUTPUT, { isPrompt: false, isEdit: true, depth: 0 }) : msgText;
 
-		if (ilsInstance.regexEnabled && gSettings.regexPostGenerate)
-		{
-			msg = getRegexedString(msg, regex_placement.AI_OUTPUT, { isPrompt: false, isEdit: true, depth: 0 });
-			reasoning = getRegexedString(reasoning, regex_placement.REASONING, { isPrompt: false, isEdit: true, depth: 0 });
-		}
-
-		summaryMsg.mes = msg;
-		summaryMsg.extra.reasoning = reasoning;
-	}
-	else
-	{
-		summaryMsg.mes = response;
-	}
+	if (msgReasoning)
+		summaryMsg.extra.reasoning = runRegex ? getRegexedString(msgReasoning, regex_placement.REASONING, { isPrompt: false, isEdit: true, depth: 0 }) : msgReasoning;
 
 	summaryMsg.send_date = getMessageTimeStamp();
 	summaryMsg.extra.api = getGeneratingApi();
@@ -313,16 +291,10 @@ async function GenerateSummaryAI()
 	}
 
 	// Start LLM generation asynchronously without awaiting yet
-	let promptParams = { prompt: promptText };
-	if (gSettings.tokenLimit > 0)
-		promptParams.responseLength = gSettings.tokenLimit;
-
-	const useNewGenerate = (typeof stContext.generateRawData === "function");
-	const responsePromise = useNewGenerate ? stContext.generateRawData(promptParams) : stContext.generateRaw(promptParams);
+	let genStart = StartGenerate(stContext, promptText, gSettings.tokenLimit);
 
 	// create empty summary message while generation runs
 	const newSummaryMsg = await CreateEmptySummaryMessage(originalMessages, stContext);
-	//newSummaryMsg.mes = "Generating..."; TODO shouldn't be needed?
 
 	// Delete Originals
 	stContext.chat.splice(selection.start, originalMessages.length);
@@ -352,22 +324,11 @@ async function GenerateSummaryAI()
 	}
 
 	// Now await for the LLM response to complete
-	let response = "";
-	try
-	{
-		response = await responsePromise;
-	}
-	catch (e)
-	{
-		console.error("[ILS] Failed to get response from LLM");
-		response = "[Failed to get a response]\nThis can happen if Token limit is too low and reasoning uses up all of it.\nCheck console output for full error message.\nException:\n" + e;
-		if (useNewGenerate)
-			response += "\nRaw Response:\n" + SafeJsonStringify(response);
-	}
+	let genResponse = await FinishGenerate(stContext, genStart);
 
-	// Update the summary message in the backend with the generated response
-	//const summaryMsg = stContext.chat[selection.start];
-	await PopulateSummaryMessage(stContext, stContext.chat[selection.start], response, useNewGenerate);
+	//const msg = useNewGenerate ? stContext.extractMessageFromData(response) : response;
+	//const reasoning = useNewGenerate ? extractReasoningFromData(response) : null;
+	await PopulateSummaryMessage(stContext, stContext.chat[selection.start], genResponse.mainMsg, genResponse.reasoning);
 
 	// Save and reload to reflect the final response in the UI
 	await stContext.saveChat();
@@ -653,18 +614,19 @@ const kHeaderButtons = [
 				return
 			}
 
-			let promptParams = { prompt: promptText };
-			if (gSettings.tokenLimit > 0)
-				promptParams.responseLength = gSettings.tokenLimit;
-
-			const useNewGenerate = (typeof stContext.generateRawData === "function");
-			const responsePromise = useNewGenerate ? stContext.generateRawData(promptParams) : stContext.generateRaw(promptParams);
+			// Start LLM generation asynchronously without awaiting yet
+			let genStart = StartGenerate(stContext, promptText, gSettings.tokenLimit);
 
 			summaryMsg.extra[kExtraDataKey][kMessageEstimatedTokenCountKey] = await Promise.all(originalMessages.map(item => stContext.getTokenCountAsync(item.mes)));
 
 			const summaryMsgElement = document.querySelector(`.mes[mesid="${msgIndex}"]`);
 			if (summaryMsgElement)
 			{
+				// Clear reasoning element to make it neater.
+				const reasoningElement = summaryMsgElement.querySelector(".mes_reasoning_details");
+				if (reasoningElement)
+					reasoningElement.remove();
+
 				const mesTextElement = summaryMsgElement.querySelector(".mes_text");
 				if (mesTextElement)
 				{
@@ -677,22 +639,9 @@ const kHeaderButtons = [
 			}
 
 			// Now await for the LLM response to complete
-			let response = "";
-			try
-			{
-				response = await responsePromise;
-			}
-			catch (e)
-			{
-				console.error("[ILS] Failed to get response from LLM");
-				response = "[Failed to get a response]\nThis can happen if Token limit is too low and reasoning uses up all of it.\nCheck console output for full error message.\nException:\n" + e;
-				if (useNewGenerate)
-					response += "\nRaw Response:\n" + SafeJsonStringify(response);
-				response += "\n\n[Previous Summary]\n\n" + summaryMsg.mes;
-			}
+			let genResponse = await FinishGenerate(stContext, genStart);
 
-			// Update the summary message in the backend with the generated response
-			await PopulateSummaryMessage(stContext, summaryMsg, response, useNewGenerate);
+			await PopulateSummaryMessage(stContext, summaryMsg, genResponse.mainMsg, genResponse.reasoning);
 
 			// Save and reload to reflect the final response in the UI
 			await stContext.saveChat();
