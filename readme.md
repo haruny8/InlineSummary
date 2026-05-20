@@ -100,6 +100,10 @@ This specific style hides the Message Actions buttons from older messages, which
 
 ## Changelog
 
+#### v1.1.8
+Fixed missing fucntion import causing an exception.<br>
+Change summary role from System to User to stop strict modes inserting extra message.
+
 #### v1.1.7
 Fixed v1.1.6 changes not workin with strict/semi-strict modes
 

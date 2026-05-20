@@ -9,6 +9,8 @@
 // =========================
 
 import { getRegexedString, regex_placement } from "../../../extensions/regex/engine.js";
+import { extractReasoningFromData } from '../../../../scripts/reasoning.js';
+import { sendOpenAIRequest } from '../../../../scripts/openai.js';
 
 import
 {
@@ -17,24 +19,6 @@ import
 	GetMessageByIndex,
 	SafeJsonStringify,
 } from './common.js';
-
-import
-{
-	setOpenAIMessageExamples,
-	setOpenAIMessages,
-	setupChatCompletionPromptManager,
-	prepareOpenAIMessages,
-	sendOpenAIRequest,
-	loadOpenAISettings,
-	oai_settings,
-	openai_messages_count,
-	chat_completion_sources,
-	getChatCompletionModel,
-	proxies,
-	loadProxyPresets,
-	selected_proxy,
-	initOpenAI,
-} from '../../../../scripts/openai.js';
 
 // =========================
 // Summary Generation Main
@@ -215,7 +199,7 @@ export function StartGenerate(stContext, promptText, responseTokenLimit = 0)
 		}
 
 		// Type 'normal' because... no idea, I couldn't find documentation and 'quiet' disables streaming.
-		queryFuture = sendOpenAIRequest("normal", [{ content: promptText, role: "system" }], null, {});
+		queryFuture = sendOpenAIRequest("normal", [{ content: promptText, role: "user" }], null, {});
 
 		// TODO suport other APIs too:
 		/*

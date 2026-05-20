@@ -32,7 +32,6 @@ const kDepthColours = [
 
 import { getGeneratingApi, getGeneratingModel, this_chid, system_avatar, default_avatar } from "../../../../script.js";
 import { timestampToMoment } from '../../../../scripts/utils.js';
-import { extractReasoningFromData } from '../../../../scripts/reasoning.js';
 import { getMessageTimeStamp } from '../../../../scripts/RossAscends-mods.js';
 import { power_user } from '../../../../scripts/power-user.js';
 import { getRegexedString, regex_placement } from "../../../extensions/regex/engine.js";
@@ -326,8 +325,6 @@ async function GenerateSummaryAI()
 	// Now await for the LLM response to complete
 	let genResponse = await FinishGenerate(stContext, genStart);
 
-	//const msg = useNewGenerate ? stContext.extractMessageFromData(response) : response;
-	//const reasoning = useNewGenerate ? extractReasoningFromData(response) : null;
 	await PopulateSummaryMessage(stContext, stContext.chat[selection.start], genResponse.mainMsg, genResponse.reasoning);
 
 	// Save and reload to reflect the final response in the UI
