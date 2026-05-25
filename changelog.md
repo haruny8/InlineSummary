@@ -1,5 +1,8 @@
 # Full Changelog
 
+#### v1.1.9
+Streaming support for Text Completion API. It uses the setting from the preset and will allow larger reply sizes for certain LLM providers.
+
 #### v1.1.8
 Fixed missing fucntion import causing an exception.<br>
 Change summary role from System to User to stop strict modes inserting extra message.

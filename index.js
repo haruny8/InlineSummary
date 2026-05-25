@@ -241,10 +241,10 @@ async function PopulateSummaryMessage(stContext, summaryMsg, msgText, msgReasoni
 	const ilsInstance = GetILSInstance();
 	const runRegex = (ilsInstance.regexEnabled && gSettings.regexPostGenerate);
 
-	if (msgText)
+	if (msgText != null)
 		summaryMsg.mes = runRegex ? getRegexedString(msgText, regex_placement.AI_OUTPUT, { isPrompt: false, isEdit: true, depth: 0 }) : msgText;
 
-	if (msgReasoning)
+	if (msgReasoning != null)
 		summaryMsg.extra.reasoning = runRegex ? getRegexedString(msgReasoning, regex_placement.REASONING, { isPrompt: false, isEdit: true, depth: 0 }) : msgReasoning;
 
 	summaryMsg.send_date = getMessageTimeStamp();
@@ -290,7 +290,7 @@ async function GenerateSummaryAI()
 	}
 
 	// Start LLM generation asynchronously without awaiting yet
-	let genStart = StartGenerate(stContext, promptText, gSettings.tokenLimit);
+	let genStart = await StartGenerate(stContext, promptText, gSettings.tokenLimit);
 
 	// create empty summary message while generation runs
 	const newSummaryMsg = await CreateEmptySummaryMessage(originalMessages, stContext);
@@ -553,6 +553,7 @@ const kHeaderButtons = [
 			// on a message that doesn't have Original Messages.
 			if (HasOriginalMessages(summaryMsg))
 			{
+				// TODO: move this into a separate function
 				let originals = summaryMsg.extra[kExtraDataKey][kOriginalMessagesKey];
 
 				stContext.chat.splice(msgIndex + 1, 0, ...originals);
@@ -612,7 +613,7 @@ const kHeaderButtons = [
 			}
 
 			// Start LLM generation asynchronously without awaiting yet
-			let genStart = StartGenerate(stContext, promptText, gSettings.tokenLimit);
+			let genStart = await StartGenerate(stContext, promptText, gSettings.tokenLimit);
 
 			summaryMsg.extra[kExtraDataKey][kMessageEstimatedTokenCountKey] = await Promise.all(originalMessages.map(item => stContext.getTokenCountAsync(item.mes)));
 
@@ -1105,11 +1106,181 @@ async function SummariseCommand(namedArgs, unnamedArgs)
 		return "";
 	}
 
-	const manualMode = String(namedArgs.manual).trim().toLowerCase();
-	if (manualMode == "true")
+	const manualMode = String(namedArgs.manual).trim().toLowerCase() == "true";
+	if (manualMode)
 		await GenerateSummaryManual();
 	else
 		await GenerateSummaryAI();
+	return "";
+}
+
+async function RestoreCommand(namedArgs, unnamedArgs)
+{
+	const idParams = String(unnamedArgs).split(' ');
+	let numToRestore = idParams[0] ? Math.max(0, parseInt(idParams[0], 10)) : 0;
+
+	const ilsInstance = GetILSInstance();
+	if (ilsInstance.operationLock)
+		return "";
+
+	const stContext = SillyTavern.getContext();
+
+	ilsInstance.operationLock = true;
+	stContext.deactivateSendButtons();
+
+	let didRestore = false;
+	while (numToRestore > 0)
+	{
+		let lastSummary = -1;
+		for (let i = stContext.chat.length - 1; i >= 0; --i)
+		{
+			if (HasOriginalMessages(stContext.chat[i]))
+			{
+				lastSummary = i;
+				break;
+			}
+		}
+		if (lastSummary > -1)
+		{
+			// TODO: move this into a separate function
+			let originals = stContext.chat[lastSummary].extra[kExtraDataKey][kOriginalMessagesKey];
+
+			stContext.chat.splice(lastSummary + 1, 0, ...originals);
+			stContext.chat.splice(lastSummary, 1);
+			didRestore = true;
+		}
+		else
+		{
+			break;
+		}
+
+		--numToRestore;
+	}
+
+	if (didRestore)
+	{
+		await stContext.saveChat();
+		await stContext.reloadCurrentChat();
+	}
+
+	stContext.activateSendButtons();
+	ilsInstance.operationLock = false;
+	ClearSelection(stContext);
+
+	return "";
+}
+
+async function Experiment1(namedArgs, unnamedArgs)
+{
+	const idParams = String(unnamedArgs).split(' ');
+	const chunkSize = idParams[0] ? Math.max(2, parseInt(idParams[0], 10)) : 2;
+
+	const manualMode = String(namedArgs.manual).trim().toLowerCase() == "true";
+
+	while (true)
+	{
+		const stContext = SillyTavern.getContext();
+		const selection = GetSelection(stContext);
+
+		let lastSummary = -1;
+		for (let i = stContext.chat.length - 1; i >= 0; --i)
+		{
+			if (HasOriginalMessages(stContext.chat[i]))
+			{
+				lastSummary = i;
+				break;
+			}
+		}
+
+		// Count summarisable messages, skipping over hidden messages
+		let summaryFrom = lastSummary + 1;
+		let summaryTo = summaryFrom;
+		let messageCount = 0;
+		for (let i = summaryFrom; (i < stContext.chat.length) && (messageCount < chunkSize); ++i)
+		{
+			if (!stContext.chat[i].is_system)
+				++messageCount;
+
+			summaryTo = i;
+		}
+
+		// Not Enough Messages
+		if (messageCount < chunkSize)
+			break;
+
+		// Count reamining messages, skipping over hidden messages
+		let remainingMessages = 0;
+		for (let i = summaryTo + 1; i < stContext.chat.length; ++i)
+		{
+			if (!stContext.chat[i].is_system)
+				++remainingMessages;
+		}
+
+		// Not Enough Messages
+		if (remainingMessages < chunkSize)
+			break;
+
+		selection.start = summaryFrom;
+		selection.end = summaryTo;
+
+		if (manualMode)
+			await GenerateSummaryManual();
+		else
+			await GenerateSummaryAI();
+	}
+
+	return "";
+}
+
+async function Experiment2(namedArgs, unnamedArgs)
+{
+	const idParams = String(unnamedArgs).split(' ');
+	const chunkSize = idParams[0] ? Math.max(2, parseInt(idParams[0], 10)) : 2;
+
+	const manualMode = String(namedArgs.manual).trim().toLowerCase() == "true";
+
+	while (true)
+	{
+		const stContext = SillyTavern.getContext();
+		const selection = GetSelection(stContext);
+
+		// Count summarisable messages, skipping over hidden messages
+		let summaryFrom = 0;
+		let summaryTo = summaryFrom;
+		let messageCount = 0;
+		for (let i = summaryFrom; (i < stContext.chat.length) && (messageCount < chunkSize); ++i)
+		{
+			if (!stContext.chat[i].is_system)
+				++messageCount;
+
+			summaryTo = i;
+		}
+
+		// Not Enough Messages
+		if (messageCount < chunkSize)
+			break;
+
+		// Count reamining messages, skipping over hidden messages
+		let remainingMessages = 0;
+		for (let i = summaryTo + 1; i < stContext.chat.length; ++i)
+		{
+			if (!stContext.chat[i].is_system)
+				++remainingMessages;
+		}
+
+		// Not Enough Messages
+		if (remainingMessages < chunkSize)
+			break;
+
+		selection.start = summaryFrom;
+		selection.end = summaryTo;
+
+		if (manualMode)
+			await GenerateSummaryManual();
+		else
+			await GenerateSummaryAI();
+	}
+
 	return "";
 }
 
@@ -1245,7 +1416,88 @@ jQuery(async () =>
 			<pre><code class="language-stscript">/ils-summarise 8 16</code></pre>
 			<pre><code class="language-stscript">/ils-summarise manual=true 10 20</code></pre>
 		</div>
-	`
+		`
+	}));
+
+	stContext.SlashCommandParser.addCommandObject(stContext.SlashCommand.fromProps({
+		name: "ils-restore",
+		callback: RestoreCommand,
+		unnamedArgumentList: [
+			stContext.SlashCommandArgument.fromProps({
+				description: 'Summaries to restore',
+				typeList: stContext.ARGUMENT_TYPE.NUMBER,
+				isRequired: true,
+			}),
+		],
+		helpString: `
+		<div>
+			Restore original messages from specified number of latest summaries.
+		</div>
+		<div>
+			<strong>Examples:</strong>
+			<pre><code class="language-stscript">/ils-restore 3</code></pre>
+		</div>
+		`
+	}));
+
+	stContext.SlashCommandParser.addCommandObject(stContext.SlashCommand.fromProps({
+		name: "ils-experimental-summarise-linear",
+		callback: Experiment1,
+		namedArgumentList: [
+			stContext.SlashCommandNamedArgument.fromProps({
+				name: 'manual',
+				description: 'Insert manual summary message instead of using AI.',
+				typeList: stContext.ARGUMENT_TYPE.BOOLEAN,
+				defaultValue: 'false',
+			}),
+		],
+		unnamedArgumentList: [
+			stContext.SlashCommandArgument.fromProps({
+				description: 'Param',
+				typeList: stContext.ARGUMENT_TYPE.NUMBER,
+				isRequired: true,
+			}),
+		],
+		helpString: `
+		<div>
+			Experimental 1 - Summarise All Linear - Use at your own risk!
+		</div>
+		<div>
+			<strong>Examples:</strong>
+			<pre><code class="language-stscript">/ils-experimental-summarise-linear 10</code></pre>
+			<pre><code class="language-stscript">/ils-experimental-summarise-linear manual=true 10</code></pre>
+		</div>
+		`
+	}));
+
+	stContext.SlashCommandParser.addCommandObject(stContext.SlashCommand.fromProps({
+		name: "ils-experimental-summarise-stacked",
+		callback: Experiment2,
+		namedArgumentList: [
+			stContext.SlashCommandNamedArgument.fromProps({
+				name: 'manual',
+				description: 'Insert manual summary message instead of using AI.',
+				typeList: stContext.ARGUMENT_TYPE.BOOLEAN,
+				defaultValue: 'false',
+			}),
+		],
+		unnamedArgumentList: [
+			stContext.SlashCommandArgument.fromProps({
+				description: 'Param',
+				typeList: stContext.ARGUMENT_TYPE.NUMBER,
+				isRequired: true,
+			}),
+		],
+		helpString: `
+		<div>
+			Experimental 2 - Summarise All Stacked - Use at your own risk!
+		</div>
+		<div>
+			<strong>Examples:</strong>
+			<pre><code class="language-stscript">/ils-experimental-summarise-stacked 10</code></pre>
+			<pre><code class="language-stscript">/ils-experimental-summarise-stacked manual=true 10</code></pre>
+		</div>
+		`
 	}));
 
 	console.log("[ILS] Inline Summary - Ready");

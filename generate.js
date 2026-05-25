@@ -11,6 +11,36 @@
 import { getRegexedString, regex_placement } from "../../../extensions/regex/engine.js";
 import { extractReasoningFromData } from '../../../../scripts/reasoning.js';
 import { sendOpenAIRequest } from '../../../../scripts/openai.js';
+import { amount_gen, createRawPrompt } from "../../../../script.js";
+import { generateTextGenWithStreaming, getTextGenGenerationData } from '../../../../scripts/textgen-settings.js';
+
+/*
+import
+{
+	generateKoboldWithStreaming,
+	kai_settings,
+	loadKoboldSettings,
+	getKoboldGenerationData,
+	kai_flags,
+	koboldai_settings,
+	koboldai_setting_names,
+	initKoboldSettings,
+} from '../../../../scripts/kai-settings.js';
+
+import
+{
+	generateNovelWithStreaming,
+	getNovelGenerationData,
+	getKayraMaxContextTokens,
+	loadNovelSettings,
+	nai_settings,
+	adjustNovelInstructionPrompt,
+	parseNovelAILogprobs,
+	novelai_settings,
+	novelai_setting_names,
+	initNovelAISettings,
+} from './scripts/nai-settings.js';
+ */
 
 import
 {
@@ -181,53 +211,83 @@ export async function MakeSummaryPrompt(msgIndex, numMsgAfterSummary, originalMe
 	return { promptOk: true, promptText: summaryPrompt, promptError: "" };
 }
 
-export function StartGenerate(stContext, promptText, responseTokenLimit = 0)
+export async function StartGenerate(stContext, promptText, responseTokenLimit = 0)
 {
 	const ilsInstance = GetILSInstance();
 	let queryFuture = null;
 	let isOk = true;
 	let errText = "";
 	let oldMaxTokens = 0;
+	let abortCtrl = new AbortController();
 
-	if (stContext.mainApi == "openai" && stContext.chatCompletionSettings.stream_openai)
+	try
 	{
-		// Save and overwrite token limit
-		if (responseTokenLimit > 0)
+		if (stContext.mainApi == "openai" && stContext.chatCompletionSettings.stream_openai)
 		{
-			oldMaxTokens = stContext.chatCompletionSettings.openai_max_tokens;
-			stContext.chatCompletionSettings.openai_max_tokens = responseTokenLimit;
-		}
+			// Save and overwrite token limit
+			if (responseTokenLimit > 0)
+			{
+				oldMaxTokens = stContext.chatCompletionSettings.openai_max_tokens;
+				stContext.chatCompletionSettings.openai_max_tokens = responseTokenLimit;
+			}
 
-		// Type 'normal' because... no idea, I couldn't find documentation and 'quiet' disables streaming.
-		queryFuture = sendOpenAIRequest("normal", [{ content: promptText, role: "user" }], null, {});
-
-		// TODO suport other APIs too:
-		/*
-		switch (main_api) {
-			case 'openai':
-				return await sendOpenAIRequest(type, data.prompt, streamingProcessor.abortController.signal, options);
-			case 'textgenerationwebui':
-				return await generateTextGenWithStreaming(data, streamingProcessor.abortController.signal);
-			case 'novel':
-				return await generateNovelWithStreaming(data, streamingProcessor.abortController.signal);
-			case 'kobold':
-				return await generateKoboldWithStreaming(data, streamingProcessor.abortController.signal);
-			default:
-				throw new Error('Streaming is enabled, but the current API does not support streaming.');
+			// Type 'normal' because... no idea, I couldn't find documentation and 'quiet' disables streaming.
+			queryFuture = sendOpenAIRequest("normal", [{ content: promptText, role: "user" }], null, {});
 		}
-		*/
+		else if (stContext.mainApi == "textgenerationwebui" && stContext.textCompletionSettings.streaming)
+		{
+			const rawPrompt = createRawPrompt(promptText, stContext.mainApi, false, false, null, null);
+
+			let promptParams = await getTextGenGenerationData(rawPrompt, (responseTokenLimit > 0) ? responseTokenLimit : amount_gen, false, false, null, "normal");
+			queryFuture = generateTextGenWithStreaming(promptParams, abortCtrl.signal);
+		}
+		// For other APIs, code taken from various ST scripts, incomplete and untested.
+		// Not sure how generateData maps to what generateKoboldWithStreaming/generateNovelWithStreaming expect
+		/*else if ((stContext.mainApi == "kobold" || stContext.mainApi == "koboldhorde") && kai_settings.streaming_kobold)
+		{
+			/*
+			if (kai_settings.preset_settings === 'gui')
+			{
+				generateData = { prompt: prompt, gui_settings: true, max_length: amount_gen, max_context_length: max_context, api_server: kai_settings.api_server };
+			}
+			else
+			{
+				const isHorde = api === 'koboldhorde';
+				const koboldSettings = koboldai_settings[koboldai_setting_names[kai_settings.preset_settings]];
+				generateData = getKoboldGenerationData(prompt.toString(), koboldSettings, amount_gen, max_context, isHorde, 'quiet');
+			}
+			* /
+
+			let promptParams = null;
+			queryFuture = generateKoboldWithStreaming(promptParams, abortCtrl.signal);
+		}
+		else if (stContext.mainApi == "novel" && novelai_settings.streaming_novel)
+		{
+			/*
+			const novelSettings = novelai_settings[novelai_setting_names[nai_settings.preset_settings_novel]];
+			generateData = getNovelGenerationData(prompt, novelSettings, amount_gen, false, false, null, 'quiet');
+			* /
+
+			let promptParams = null;
+			queryFuture = generateNovelWithStreaming(promptParams, streamingProcessor.abortController.signal);
+		}*/
+		else
+		{
+			let promptParams = { prompt: promptText };
+			if (responseTokenLimit > 0)
+				promptParams.responseLength = responseTokenLimit;
+
+			const useNewGenerate = (typeof stContext.generateRawData === "function");
+			queryFuture = useNewGenerate ? stContext.generateRawData(promptParams) : stContext.generateRaw(promptParams);
+		}
 	}
-	else
+	catch (e)
 	{
-		let promptParams = { prompt: promptText };
-		if (responseTokenLimit > 0)
-			promptParams.responseLength = responseTokenLimit;
-
-		const useNewGenerate = (typeof stContext.generateRawData === "function");
-		queryFuture = useNewGenerate ? stContext.generateRawData(promptParams) : stContext.generateRaw(promptParams);
+		console.error("[ILS] Failed to get response from LLM.\n" + e);
+		isOk = false;
 	}
 
-	return { generateQuery: queryFuture, isOk: isOk, errorText: errText, maxResponseTokens: oldMaxTokens };
+	return { generateQuery: queryFuture, isOk: isOk, errorText: errText, maxResponseTokens: oldMaxTokens, ac: abortCtrl };
 }
 
 export async function FinishGenerate(stContext, genStart)
@@ -249,7 +309,7 @@ export async function FinishGenerate(stContext, genStart)
 			{
 				latestData = chunk;
 			}
-			responseText = latestData.text;
+			responseText = latestData?.text ?? "";
 			reasoningText = latestData?.state?.reasoning ?? null;
 		}
 		else

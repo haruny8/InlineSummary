@@ -24,12 +24,17 @@ Summary messages will contain an expandable header which contains the original m
 The **Restore Original and Delete Summary** button will detele the summary and restore the original messages.<br>
 The **Re-Summarise (AI)** will regenerate a new summary using the stored original messages.
 
-#### Slash Command
+#### Slash Commands
 `/ils-summarise manual=[true|false] x y` is avalable to generate a summary.<br>
 Usage: `x` and `y` are start and stop message indices, when `manual` is set to `true` inserts an placeholder summary message instead of using an AI (Same as the **Manual Summary** button).<br>
 ##### Examples:
 * `/ils-summarise 1 10` - summarise messages 1 through 10 inclusive using AI.
 * `/ils-summarise manual=true 1 10` - add a placeholder summary for messages 1 through 10.
+
+`/ils-restore x` is avalable to restore original messages. Restoration happens in reverse oder - newest summary first.<br>
+Usage: `x` specifies how many summaries to restore.<br>
+##### Examples:
+* `/ils-restore 5` - restores original messages from 5 latest summaries.
 
 ## How does it work?
 When a range is selected, the extension creates a new empty summary message and inserts it into the chat.<br>
@@ -99,6 +104,9 @@ _**Chat Style - Document**_<br>
 This specific style hides the Message Actions buttons from older messages, which also removes the buttons added by this extension. Bubbles and Flat styles do work.<br>
 
 ## Changelog
+
+#### v1.1.9
+Streaming support for Text Completion API. It uses the setting from the preset and will allow larger reply sizes for certain LLM providers.
 
 #### v1.1.8
 Fixed missing fucntion import causing an exception.<br>
