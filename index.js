@@ -258,11 +258,11 @@ async function GenerateSummaryAI()
 	let stContext = SillyTavern.getContext();
 	const selection = GetSelection(stContext);
 	if (!IsValidRangeSelection(selection))
-		return;
+		return false;
 
 	const ilsInstance = GetILSInstance()
 	if (ilsInstance.operationLock)
-		return;
+		return false;
 
 	ilsInstance.operationLock = true;
 	stContext.deactivateSendButtons();
@@ -274,7 +274,7 @@ async function GenerateSummaryAI()
 	{
 		stContext.activateSendButtons();
 		ilsInstance.operationLock = false;
-		return;
+		return false;
 	}
 
 	// Prepare original messages and prompt
@@ -286,7 +286,7 @@ async function GenerateSummaryAI()
 		ShowError("Failed to make summary prompt.\n" + promptError);
 		stContext.activateSendButtons();
 		ilsInstance.operationLock = false;
-		return
+		return false;
 	}
 
 	// Start LLM generation asynchronously without awaiting yet
@@ -339,6 +339,8 @@ async function GenerateSummaryAI()
 	BringIntoView(selection.start);
 
 	ClearSelection(stContext);
+
+	return genResponse.isOk;
 }
 
 async function GenerateSummaryManual()
@@ -346,11 +348,11 @@ async function GenerateSummaryManual()
 	const stContext = SillyTavern.getContext();
 	const selection = GetSelection(stContext);
 	if (!IsValidRangeSelection(selection))
-		return;
+		return false;
 
 	const ilsInstance = GetILSInstance();
 	if (ilsInstance.operationLock)
-		return;
+		return false;
 
 	ilsInstance.operationLock = true;
 
@@ -376,6 +378,8 @@ async function GenerateSummaryManual()
 	ilsInstance.operationLock = false;
 
 	ClearSelection(stContext);
+
+	return true;
 }
 
 // =========================
@@ -1223,10 +1227,14 @@ async function Experiment1(namedArgs, unnamedArgs)
 		selection.start = summaryFrom;
 		selection.end = summaryTo;
 
+		let isOk = true;
 		if (manualMode)
-			await GenerateSummaryManual();
+			isOk = await GenerateSummaryManual();
 		else
-			await GenerateSummaryAI();
+			isOk = await GenerateSummaryAI();
+
+		if (!isOk)
+			break;
 	}
 
 	return "";
@@ -1275,10 +1283,14 @@ async function Experiment2(namedArgs, unnamedArgs)
 		selection.start = summaryFrom;
 		selection.end = summaryTo;
 
+		let isOk = true;
 		if (manualMode)
-			await GenerateSummaryManual();
+			isOk = await GenerateSummaryManual();
 		else
-			await GenerateSummaryAI();
+			isOk = await GenerateSummaryAI();
+
+		if (!isOk)
+			break;
 	}
 
 	return "";

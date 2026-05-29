@@ -297,6 +297,7 @@ export async function FinishGenerate(stContext, genStart)
 	let responseText = "";
 	let reasoningText = null;
 	let response = null;
+	let isOk = genStart.isOk;
 
 	try
 	{
@@ -324,6 +325,7 @@ export async function FinishGenerate(stContext, genStart)
 		responseText = "[Failed to get a response]\nThis can happen if Token limit is too low and reasoning uses up all of it.\nCheck console output for full error message.\nException:\n" + e;
 		if (useNewGenerate)
 			responseText += "\nRaw Response:\n" + SafeJsonStringify(response);
+		isOk = false;
 	}
 
 	// Restore token limit
@@ -332,5 +334,5 @@ export async function FinishGenerate(stContext, genStart)
 		stContext.chatCompletionSettings.openai_max_tokens = genStart.maxResponseTokens;
 	}
 
-	return { mainMsg: responseText, reasoning: reasoningText };
+	return { mainMsg: responseText, reasoning: reasoningText, isOk: isOk };
 }
