@@ -22,6 +22,7 @@ const kDefaultSettings = Object.freeze({
 	regexPostGenerate: false,
 	summaryNameMode: "custom",
 	summaryName: "Summary",
+	doLegacyRecovery: true,
 });
 
 // =========================
@@ -209,6 +210,9 @@ export function OnSettingChanged(event)
 		case "ils_setting_smr_name_custom_val":
 			gSettings.summaryName = val;
 			break;
+		case "ils_setting_do_legacy_recovery":
+			gSettings.doLegacyRecovery = event.target.checked;
+			break;
 		default:
 			return; // unknown setting
 	}
@@ -379,6 +383,7 @@ export async function UpdateSettingsUI()
 	$("#ils_setting_enable_regex_post_generate").prop("checked", gSettings.regexPostGenerate);
 	$("#ils_setting_use_different_profile").prop("checked", gSettings.useDifferentProfile);
 	$("#ils_setting_use_specified_api_preset").prop("checked", gSettings.useDifferentApiPreset);
+	$("#ils_setting_do_legacy_recovery").prop("checked", gSettings.doLegacyRecovery);
 
 	const radio = document.querySelector(`input[name="ils_setting_radio_smr_name"][value="${gSettings.summaryNameMode}"]`);
 	if (radio)

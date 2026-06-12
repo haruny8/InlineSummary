@@ -67,6 +67,7 @@ Settings in the Extension settings menu:
 | Enable Regex when summarising messages | Run Regex when on the prompt generation summary |
 | Enable Regex on final summary | Run Regex on the summary after it was generated |
 | Summary message sender name | Summary messages can have custom sender name, it can either be: User, Character or Custom. If your preset includes name prefixes, using a custom name might hint LLM that specific message is a summary |
+| Restore legacy summary messages | Restores legacy summaries that were generated using Inline Summary versions before v1.2. This may slow down loading older chats and can be disabled once you've recovered all your older chats. |
 
 ## FAQ
 
@@ -104,6 +105,10 @@ _**Chat Style - Document**_<br>
 This specific style hides the Message Actions buttons from older messages, which also removes the buttons added by this extension. Bubbles and Flat styles do work.<br>
 
 ## Changelog
+
+#### v1.2.0
+Fixed original message data being duplicated in the saved chat files leading to file size bloat. A recovery step will run when loading old chats to remove duplicates and move data where it won't get duplicated (can be disabled in options).<br>
+Added some error checking to improve rare but critical scenarios where SillyTavern might fail saving chat.
 
 #### v1.1.9
 Streaming support for Text Completion API. It uses the setting from the preset and will allow larger reply sizes for certain LLM providers.

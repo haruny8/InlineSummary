@@ -1,5 +1,9 @@
 # Full Changelog
 
+#### v1.2.0
+Fixed original message data being duplicated in the saved chat files leading to file size bloat. A recovery step will run when loading old chats to remove duplicates and move data where it won't get duplicated (can be disabled in options).<br>
+Added some error checking to improve rare but critical scenarios where SillyTavern might fail saving chat.
+
 #### v1.1.9
 Streaming support for Text Completion API. It uses the setting from the preset and will allow larger reply sizes for certain LLM providers.
 

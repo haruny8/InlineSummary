@@ -3,10 +3,6 @@
 // =========================
 // Constants
 // =========================
-const kExtraDataKey = "ILS_Data";
-const kOriginalMessagesKey = "OriginalMessages";
-const kMessageEstimatedTokenCountKey = "EstimatedTokens";
-
 const kMsgBtnColours = {
 	default: null,
 	selected: "#4CAF50",
@@ -39,8 +35,11 @@ import { getRegexedString, regex_placement } from "../../../extensions/regex/eng
 import
 {
 	kSettingsFile,
+	kExtraDataKey,
+	kOriginalMessagesKey,
+	kMessageEstimatedTokenCountKey,
 	ShowError,
-	//ShowWarning,
+	ShowWarning,
 	Sleep,
 	SafeJsonStringify,
 	GetILSInstance,
@@ -86,6 +85,24 @@ function MakeSpinner()
 	return spinner;
 }
 
+async function SaveAndReloadChat(stContext, errorMsg = null)
+{
+	try
+	{
+		await stContext.saveChat();
+		await stContext.reloadCurrentChat();
+	}
+	catch (e)
+	{
+		if (errorMsg)
+			ShowError(errorMsg);
+
+		return false;
+	}
+
+	return true;
+}
+
 // =========================
 // Selection Helpers
 // =========================
@@ -118,11 +135,48 @@ function IsValidRangeSelection(selection)
 }
 
 // =========================
-// Chat Message Functions
+// Legacy Functions
 // =========================
-function HasOriginalMessages(msgObject)
+
+function HasLegacyOriginalMessages(msgObject)
 {
 	return msgObject && msgObject.extra && msgObject.extra[kExtraDataKey] && Array.isArray(msgObject.extra[kExtraDataKey][kOriginalMessagesKey]);
+}
+
+function RecoverOldData(msgObject)
+{
+	if (HasLegacyOriginalMessages(msgObject))
+	{
+		msgObject[kExtraDataKey] = msgObject.extra[kExtraDataKey];
+		delete msgObject.extra[kExtraDataKey];
+
+		for (const swipe of msgObject.swipe_info)
+		{
+			delete swipe.extra[kExtraDataKey];
+		}
+
+		const originalMessges = msgObject[kExtraDataKey][kOriginalMessagesKey] ?? null;
+		if (originalMessges)
+		{
+			for (let msg of originalMessges)
+			{
+				RecoverOldData(msg);
+			}
+		}
+
+		return true;
+	}
+
+	return false;
+}
+
+// =========================
+// Chat Message Functions
+// =========================
+
+function HasOriginalMessages(msgObject)
+{
+	return msgObject && msgObject[kExtraDataKey] && Array.isArray(msgObject[kExtraDataKey][kOriginalMessagesKey]);
 }
 
 async function CreateEmptySummaryMessage(originalMessages, stContext)
@@ -150,9 +204,9 @@ async function CreateEmptySummaryMessage(originalMessages, stContext)
 	}
 
 	// Store original messages
-	summary.extra[kExtraDataKey] = {};
-	summary.extra[kExtraDataKey][kOriginalMessagesKey] = originalMessages;
-	summary.extra[kExtraDataKey][kMessageEstimatedTokenCountKey] = await Promise.all(originalMessages.map(item => stContext.getTokenCountAsync(item.mes)));
+	summary[kExtraDataKey] = {};
+	summary[kExtraDataKey][kOriginalMessagesKey] = originalMessages;
+	summary[kExtraDataKey][kMessageEstimatedTokenCountKey] = await Promise.all(originalMessages.map(item => stContext.getTokenCountAsync(item.mes)));
 
 	return summary;
 }
@@ -215,20 +269,20 @@ async function SwapToSummaryProfile(stContext, ilsInstance)
 	return { success, useDifferentProfile, prevProfile, useDifferentApiPreset, prevPreset };
 }
 
-async function SwapBackFromSummaryProfile(stContext, useDifferentProfile, prevProfile, useDifferentApiPreset, prevPreset)
+async function SwapBackFromSummaryProfile(stContext, profileSwap)
 {
-	if (useDifferentProfile)
+	if (profileSwap.useDifferentProfile)
 	{
-		const swapResult = await stContext.executeSlashCommandsWithOptions("/profile " + prevProfile);
+		const swapResult = await stContext.executeSlashCommandsWithOptions("/profile " + profileSwap.prevProfile);
 		if (swapResult.isError)
 		{
 			ShowError("Failed to restore connection profile to:\n" + gSettings.profileName + "\nPlease check the profile manually.");
 		}
 	}
 
-	if (useDifferentApiPreset)
+	if (profileSwap.useDifferentApiPreset)
 	{
-		const swapResult = await stContext.executeSlashCommandsWithOptions("/preset " + prevPreset);
+		const swapResult = await stContext.executeSlashCommandsWithOptions("/preset " + profileSwap.prevPreset);
 		if (swapResult.isError)
 		{
 			ShowError("Failed to restore preset to:\n" + gSettings.profileName + "\nPlease check the preset manually.");
@@ -268,9 +322,9 @@ async function GenerateSummaryAI()
 	stContext.deactivateSendButtons();
 
 	// Swap Profile
-	const { success, useDifferentProfile, prevProfile, useDifferentApiPreset, prevPreset } = await SwapToSummaryProfile(stContext, ilsInstance);
+	const profileSwap = await SwapToSummaryProfile(stContext, ilsInstance);
 
-	if (!success)
+	if (!profileSwap.success)
 	{
 		stContext.activateSendButtons();
 		ilsInstance.operationLock = false;
@@ -300,8 +354,17 @@ async function GenerateSummaryAI()
 	// Insert summary message into chat and save/reload
 	stContext.chat.splice(selection.start, 0, newSummaryMsg);
 
-	await stContext.saveChat();
-	await stContext.reloadCurrentChat();
+	const chatReload1 = await SaveAndReloadChat(stContext, "Failed to Save and Reload chat. Summary generation could not be completed. Refreshing the page is recommended.");
+	if (!chatReload1)
+	{
+		await FinishGenerate(stContext, genStart);
+		await SwapBackFromSummaryProfile(stContext, profileSwap);
+
+		stContext.activateSendButtons();
+		ilsInstance.operationLock = false;
+
+		return false;
+	}
 
 	await BringIntoView(selection.start);
 
@@ -328,19 +391,19 @@ async function GenerateSummaryAI()
 	await PopulateSummaryMessage(stContext, stContext.chat[selection.start], genResponse.mainMsg, genResponse.reasoning);
 
 	// Save and reload to reflect the final response in the UI
-	await stContext.saveChat();
-	await stContext.reloadCurrentChat();
+	const chatReload2 = await SaveAndReloadChat(stContext, "Failed to Save and Reload chat. Summary could not be saved. Refreshing the page is recommended.");
 
-	await SwapBackFromSummaryProfile(stContext, useDifferentProfile, prevProfile, useDifferentApiPreset, prevPreset);
+	await SwapBackFromSummaryProfile(stContext, profileSwap);
 
 	stContext.activateSendButtons();
 	ilsInstance.operationLock = false;
 
-	BringIntoView(selection.start);
+	if (chatReload2)
+		BringIntoView(selection.start);
 
 	ClearSelection(stContext);
 
-	return genResponse.isOk;
+	return genResponse.isOk && chatReload2;
 }
 
 async function GenerateSummaryManual()
@@ -371,15 +434,15 @@ async function GenerateSummaryManual()
 	// Add Summary
 	stContext.chat.splice(selection.start, 0, newSummaryMsg);
 
-	await stContext.saveChat();
-	await stContext.reloadCurrentChat();
+	const chatReload = await SaveAndReloadChat(stContext, "Failed to Save and Reload chat. Summary could not be saved. Refreshing the page is recommended.");
 
-	BringIntoView(selection.start);
+	if (chatReload)
+		BringIntoView(selection.start);
 	ilsInstance.operationLock = false;
 
 	ClearSelection(stContext);
 
-	return true;
+	return chatReload;
 }
 
 // =========================
@@ -558,14 +621,13 @@ const kHeaderButtons = [
 			if (HasOriginalMessages(summaryMsg))
 			{
 				// TODO: move this into a separate function
-				let originals = summaryMsg.extra[kExtraDataKey][kOriginalMessagesKey];
+				let originals = summaryMsg[kExtraDataKey][kOriginalMessagesKey];
 
 				stContext.chat.splice(msgIndex + 1, 0, ...originals);
 				stContext.chat.splice(msgIndex, 1);
 			}
 
-			await stContext.saveChat();
-			await stContext.reloadCurrentChat();
+			await SaveAndReloadChat(stContext, "Failed to Save and Reload chat. Original Messages could not be restored. Refreshing the page is recommended.");
 
 			stContext.activateSendButtons();
 			ilsInstance.operationLock = false;
@@ -596,7 +658,7 @@ const kHeaderButtons = [
 			stContext.deactivateSendButtons();
 
 			// Swap Profile
-			const { success, useDifferentProfile, prevProfile, useDifferentApiPreset, prevPreset } = await SwapToSummaryProfile(stContext, ilsInstance);
+			const profileSwap = await SwapToSummaryProfile(stContext, ilsInstance);
 
 			if (!success)
 			{
@@ -605,7 +667,7 @@ const kHeaderButtons = [
 				return;
 			}
 
-			const originalMessages = summaryMsg.extra[kExtraDataKey][kOriginalMessagesKey];
+			const originalMessages = summaryMsg[kExtraDataKey][kOriginalMessagesKey];
 			const { promptOk, promptText, promptError } = await MakeSummaryPrompt(msgIndex, stContext.chat.length - (msgIndex + 1), originalMessages, stContext, gSettings);
 
 			if (!promptOk)
@@ -619,7 +681,7 @@ const kHeaderButtons = [
 			// Start LLM generation asynchronously without awaiting yet
 			let genStart = await StartGenerate(stContext, promptText, gSettings.tokenLimit);
 
-			summaryMsg.extra[kExtraDataKey][kMessageEstimatedTokenCountKey] = await Promise.all(originalMessages.map(item => stContext.getTokenCountAsync(item.mes)));
+			summaryMsg[kExtraDataKey][kMessageEstimatedTokenCountKey] = await Promise.all(originalMessages.map(item => stContext.getTokenCountAsync(item.mes)));
 
 			const summaryMsgElement = document.querySelector(`.mes[mesid="${msgIndex}"]`);
 			if (summaryMsgElement)
@@ -646,10 +708,9 @@ const kHeaderButtons = [
 			await PopulateSummaryMessage(stContext, summaryMsg, genResponse.mainMsg, genResponse.reasoning);
 
 			// Save and reload to reflect the final response in the UI
-			await stContext.saveChat();
-			await stContext.reloadCurrentChat();
+			await SaveAndReloadChat(stContext, "Failed to Save and Reload chat. New Summary could not be saved. Refreshing the page is recommended.");
 
-			await SwapBackFromSummaryProfile(stContext, useDifferentProfile, prevProfile, useDifferentApiPreset, prevPreset);
+			await SwapBackFromSummaryProfile(stContext, profileSwap);
 
 			stContext.activateSendButtons();
 			ilsInstance.operationLock = false;
@@ -715,7 +776,7 @@ function RefreshMessageElements(messageDiv, msgIndex)
 			const containerElement = messageDiv.querySelector(".ils_messages_container_root");
 			if (containerElement)
 			{
-				if (containerElement.getAttribute("msgCount") != msgObject.extra[kExtraDataKey][kOriginalMessagesKey].length)
+				if (containerElement.getAttribute("msgCount") != msgObject[kExtraDataKey][kOriginalMessagesKey].length)
 				{
 					existingOrigMsgDiv.remove();
 					return;
@@ -732,6 +793,11 @@ function RefreshMessageElements(messageDiv, msgIndex)
 
 			messageDiv.querySelector(".mes_block")?.appendChild(newOrigMsgDiv);
 		}
+
+		// Remove swipe button on Summaries as swiping on a summary would likely break stuff
+		const swipeButton = messageDiv.querySelector(".swipeRightBlock");
+		if (swipeButton)
+			swipeButton.remove();
 	}
 	else if (existingOrigMsgDiv)
 	{
@@ -758,7 +824,7 @@ function GetMessageFromPath(path, stContext)
 		if (!HasOriginalMessages(msg))
 			return null;
 
-		msg = msg.extra[kExtraDataKey][kOriginalMessagesKey][index];
+		msg = msg[kExtraDataKey][kOriginalMessagesKey][index];
 		if (!msg)
 			return null;
 	}
@@ -768,8 +834,8 @@ function GetMessageFromPath(path, stContext)
 
 function CreateOriginalMessagesContainer(msgIndex, msgObject, depth = 0, path = [])
 {
-	const originals = (msgObject.extra && msgObject.extra[kExtraDataKey] && Array.isArray(msgObject.extra[kExtraDataKey][kOriginalMessagesKey]))
-		? msgObject.extra[kExtraDataKey][kOriginalMessagesKey]
+	const originals = (msgObject[kExtraDataKey] && Array.isArray(msgObject[kExtraDataKey][kOriginalMessagesKey]))
+		? msgObject[kExtraDataKey][kOriginalMessagesKey]
 		: [];
 
 	const containerRoot = document.createElement("div");
@@ -991,8 +1057,8 @@ function HandleMessagesHeaderClick(containerHeaderDiv)
 		if (!msgObject)
 			return;
 
-		const messages = (msgObject.extra && msgObject.extra[kExtraDataKey] && Array.isArray(msgObject.extra[kExtraDataKey][kOriginalMessagesKey]))
-			? msgObject.extra[kExtraDataKey][kOriginalMessagesKey]
+		const messages = (msgObject[kExtraDataKey] && Array.isArray(msgObject[kExtraDataKey][kOriginalMessagesKey]))
+			? msgObject[kExtraDataKey][kOriginalMessagesKey]
 			: [];
 
 		messages.forEach((orgiMsg, origIndex) =>
@@ -1064,9 +1130,28 @@ function MainClickHandler(e)
 	}
 }
 
-function OnChatChanged(data)
+async function OnChatChanged(data)
 {
-	ClearSelection(SillyTavern.getContext());
+	const stContext = SillyTavern.getContext();
+
+	ClearSelection(stContext);
+
+	// Legacy Recovery
+	if (gSettings.doLegacyRecovery)
+	{
+		let didRecover = false;
+		for (const msg of stContext.chat)
+		{
+			if (RecoverOldData(msg))
+				didRecover = true;
+		}
+
+		if (didRecover)
+		{
+			ShowWarning("Legacy chat summaries have been recovered.");
+			await SaveAndReloadChat(stContext, "Failed to Save and Reload chat while recovering legacy summaries... Well, that's less than ideal.");
+		}
+	}
 }
 
 function OnMoreMsgLoaded(data)
@@ -1147,7 +1232,7 @@ async function RestoreCommand(namedArgs, unnamedArgs)
 		if (lastSummary > -1)
 		{
 			// TODO: move this into a separate function
-			let originals = stContext.chat[lastSummary].extra[kExtraDataKey][kOriginalMessagesKey];
+			let originals = stContext.chat[lastSummary][kExtraDataKey][kOriginalMessagesKey];
 
 			stContext.chat.splice(lastSummary + 1, 0, ...originals);
 			stContext.chat.splice(lastSummary, 1);
@@ -1163,8 +1248,7 @@ async function RestoreCommand(namedArgs, unnamedArgs)
 
 	if (didRestore)
 	{
-		await stContext.saveChat();
-		await stContext.reloadCurrentChat();
+		await SaveAndReloadChat(stContext, "Failed to Save and Reload chat. Failed to Restore messages. Refreshing the page is recommended.");
 	}
 
 	stContext.activateSendButtons();
