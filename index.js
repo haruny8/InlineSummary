@@ -660,7 +660,7 @@ const kHeaderButtons = [
 			// Swap Profile
 			const profileSwap = await SwapToSummaryProfile(stContext, ilsInstance);
 
-			if (!success)
+			if (!profileSwap.success)
 			{
 				stContext.activateSendButtons();
 				ilsInstance.operationLock = false;
