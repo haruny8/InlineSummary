@@ -795,9 +795,11 @@ function RefreshMessageElements(messageDiv, msgIndex)
 		}
 
 		// Remove swipe button on Summaries as swiping on a summary would likely break stuff
+		/* Revert for now, apparently causes issues on mobile?
 		const swipeButton = messageDiv.querySelector(".swipeRightBlock");
 		if (swipeButton)
 			swipeButton.remove();
+		*/
 	}
 	else if (existingOrigMsgDiv)
 	{
