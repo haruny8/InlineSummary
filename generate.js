@@ -102,6 +102,7 @@ export async function MakeSummaryPrompt(msgIndex, numMsgAfterSummary, originalMe
 
 	// - Content to Summarise
 	let messagesToSummarise = "";
+	let pickedMessageCount = 0;
 	for (const [index, msg] of originalMessages.entries())
 	{
 		const localDepth = originalMessages.length - index - 1 + numMsgAfterSummary;
@@ -116,13 +117,29 @@ export async function MakeSummaryPrompt(msgIndex, numMsgAfterSummary, originalMe
 			}
 
 			if (msgText.length > 0)
-				messagesToSummarise += "\n" + msgText;
+			{
+				// Real position of this message in the full chat array.
+				const chatIndex = msgIndex + index;
+				const msgRole = msg.is_user ? "user" : "assistant";
+				const msgName = msg.name || (msg.is_user ? stContext.name1 : stContext.name2);
+
+				messagesToSummarise += "\n<msg index=\"" + chatIndex + "\" role=\"" + msgRole + "\">"
+					+ "\n[" + msgName + "]:"
+					+ "\n" + msgText
+					+ "\n</msg>";
+
+				++pickedMessageCount;
+			}
 		}
 	}
 	if (messagesToSummarise.length == 0)
 		return { promptOk: false, promptText: "", promptError: "No messages to summarise. Are all messages in the selected range hidden or blank?" };
 
-	messagesToSummarise = "\n" + ilsSettings.summariseStartMarker + messagesToSummarise + "\n" + ilsSettings.summariseEndMarker;
+	// Substitute the {{ils_picked_count}} placeholder (if present) in the Content Start Marker
+	// setting with the actual number of messages that ended up in this summary.
+	const summariseStartMarker = ilsSettings.summariseStartMarker.replaceAll("{{ils_picked_count}}", String(pickedMessageCount));
+
+	messagesToSummarise = "\n" + summariseStartMarker + messagesToSummarise + "\n" + ilsSettings.summariseEndMarker;
 	const messagesToSummariseTokenCount = await stContext.getTokenCountAsync(messagesToSummarise);
 	remainingSize -= messagesToSummariseTokenCount;
 
