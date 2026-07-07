@@ -222,3 +222,49 @@ So instead python scirpt generates equivalent style that can be used instead, th
 	image-rendering: -webkit-optimize-contrast;
 	/* cursor: pointer */
 }
+
+/* ===========================
+   Original Messages Panel - Scrolling & Mobile Layout
+   =========================== */
+
+/* Give the "Original Messages" expandable body its own internal scrollbar,
+   instead of relying on the whole chat's scrollbar. */
+.ils_msg_container_contents {
+	max-height: 60vh;              /* how tall it gets before it starts scrolling — raise/lower to taste */
+	overflow-y: auto;
+	text-align: justify;
+	overflow-x: hidden;
+	overscroll-behavior: contain;  /* stops the scroll from "leaking" into the chat behind it — this is the important one for mobile */
+	-webkit-overflow-scrolling: touch;
+	padding-right: 4px;             /* keeps text from hiding behind the scrollbar thumb */
+}
+
+/* Optional: slim, theme-matching scrollbar (only affects desktop browsers — mobile uses its native overlay scrollbar automatically) */
+.ils_msg_container_contents::-webkit-scrollbar {
+	width: 6px;
+}
+
+.ils_msg_container_contents::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.ils_msg_container_contents::-webkit-scrollbar-thumb {
+	background-color: var(--SmartThemeQuoteColor, #8db6d9);
+	border-radius: 3px;
+}
+
+/* Mobile-only: keep #index, token count, and timestamp on one line;
+   push the (often longer) character/persona name onto its own line below. */
+@media (max-width: 768px) {
+	.ils_original_message_header .name_text {
+		order: 10;         /* render after index/token/timestamp */
+		flex-basis: 100%;  /* forces it to start a fresh line */
+	}
+}
+
+/* This container doesn't render a right-side avatar, so it doesn't need
+   the space normally reserved for one. Placed last (and after the other
+   .ils_mes_text rules above) so it wins the cascade without !important. */
+.ils_mes_text {
+	padding-right: 8px;
+}
